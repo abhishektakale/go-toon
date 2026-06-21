@@ -1,0 +1,21 @@
+# binaries
+/go-toon
+/go-toon.exe
+*.exe
+
+# test noise
+*.test
+coverage.txt
+profiles/
+*.prof
+
+# local reference (not part of the library)
+/_snapshot/
+
+# ide
+.idea/
+.vscode/
+
+# os
+.DS_Store
+Thumbs.db
