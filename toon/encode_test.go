@@ -25,6 +25,8 @@ type fixtureOptions struct {
 	Indent        int    `json:"indent"`
 	Delimiter     string `json:"delimiter"`
 	LengthMarkers bool   `json:"lengthMarkers"`
+	KeyFolding    string `json:"keyFolding"`
+	FlattenDepth  *int   `json:"flattenDepth"`
 }
 
 func TestSpecEncodeFixtures(t *testing.T) {
@@ -37,9 +39,6 @@ func TestSpecEncodeFixtures(t *testing.T) {
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
 			continue
-		}
-		if entry.Name() == "key-folding.json" {
-			continue // added when key folding lands
 		}
 		t.Run(entry.Name(), func(t *testing.T) {
 			runFixtureFile(t, filepath.Join(dir, entry.Name()))
@@ -70,6 +69,12 @@ func runFixtureFile(t *testing.T, path string) {
 			opts := toon.EncodeOptions{
 				Indent:        tc.Options.Indent,
 				LengthMarkers: tc.Options.LengthMarkers,
+			}
+			if tc.Options.KeyFolding != "" {
+				opts.KeyFolding = toon.KeyFolding(tc.Options.KeyFolding)
+			}
+			if tc.Options.FlattenDepth != nil {
+				opts.FlattenDepth = tc.Options.FlattenDepth
 			}
 			if tc.Options.Delimiter != "" {
 				opts.Delimiter = parseDelimiter(tc.Options.Delimiter)

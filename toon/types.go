@@ -23,6 +23,13 @@ type EncodeOptions struct {
 	Indent        int
 	Delimiter     Delimiter
 	LengthMarkers bool
+	KeyFolding    KeyFolding
+	FlattenDepth  *int
+}
+
+// Int is a helper for optional numeric options.
+func Int(v int) *int {
+	return &v
 }
 
 func (o EncodeOptions) withDefaults() EncodeOptions {

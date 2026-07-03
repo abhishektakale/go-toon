@@ -7,8 +7,12 @@ import (
 	"strings"
 )
 
-// Marshal turns a parsed value (usually Object) into TOON bytes.
+// Marshal encodes a Go value as TOON.
 func Marshal(v any, opts ...EncodeOptions) ([]byte, error) {
+	normalized, err := normalizeForEncode(v)
+	if err != nil {
+		return nil, err
+	}
 	var o EncodeOptions
 	if len(opts) > 0 {
 		o = opts[0].withDefaults()
@@ -16,13 +20,14 @@ func Marshal(v any, opts ...EncodeOptions) ([]byte, error) {
 		o = EncodeOptions{}.withDefaults()
 	}
 	enc := newEncoder(o)
-	return enc.encode(v)
+	return enc.encode(normalized)
 }
 
 type encoder struct {
-	opts        EncodeOptions
-	buf         bytes.Buffer
-	indentCache []string
+	opts         EncodeOptions
+	buf          bytes.Buffer
+	rootSiblings map[string]struct{}
+	indentCache  []string
 }
 
 func newEncoder(opts EncodeOptions) *encoder {
@@ -35,7 +40,8 @@ func (e *encoder) encode(v any) ([]byte, error) {
 		if len(val) == 0 {
 			return nil, nil
 		}
-		e.encodeObject(val, 0)
+		e.rootSiblings = siblingKeySet(val)
+		e.encodeObject(val, 0, "", true)
 	case []any:
 		e.encodeRootArray(val)
 	default:
@@ -144,13 +150,27 @@ func (e *encoder) writeInlinePrimitives(values []any, delim Delimiter) {
 	}
 }
 
-func (e *encoder) encodeObject(obj Object, depth int) {
-	for _, field := range obj {
-		e.encodeField(field, depth, false)
+func (e *encoder) encodeObject(obj Object, depth int, pathPrefix string, allowFold bool) {
+	fields := make([]encField, len(obj))
+	for i, f := range obj {
+		fields[i] = encField{field: f}
+	}
+	if allowFold {
+		if maxSeg := maxFoldSegments(e.opts); maxSeg != 0 {
+			limit := maxSeg
+			if limit < 0 {
+				limit = 1<<31 - 1
+			}
+			fields = foldObject(obj, siblingKeySet(obj), limit, pathPrefix, e.rootSiblings)
+		}
+	}
+	for _, item := range fields {
+		e.encodeField(item.field, depth, false, pathPrefix, allowFold && !item.noNestedFold)
 	}
 }
 
-func (e *encoder) encodeField(field Field, depth int, onHyphenLine bool) {
+func (e *encoder) encodeField(field Field, depth int, onHyphenLine bool, pathPrefix string, allowFold bool) {
+	childPrefix := joinPath(pathPrefix, field.Key)
 	switch val := field.Value.(type) {
 	case Object:
 		if onHyphenLine {
@@ -158,7 +178,7 @@ func (e *encoder) encodeField(field Field, depth int, onHyphenLine bool) {
 			e.buf.WriteByte(':')
 			e.buf.WriteByte('\n')
 			if len(val) > 0 {
-				e.encodeObject(val, depth+1)
+				e.encodeObject(val, depth+1, childPrefix, allowFold)
 			}
 			return
 		}
@@ -167,10 +187,10 @@ func (e *encoder) encodeField(field Field, depth int, onHyphenLine bool) {
 		e.buf.WriteByte(':')
 		e.buf.WriteByte('\n')
 		if len(val) > 0 {
-			e.encodeObject(val, depth+1)
+			e.encodeObject(val, depth+1, childPrefix, allowFold)
 		}
 	case []any:
-		e.encodeArray(field.Key, val, depth, onHyphenLine, e.opts.Delimiter, true)
+		e.encodeArray(field.Key, val, depth, onHyphenLine, e.opts.Delimiter, true, childPrefix, allowFold)
 	default:
 		if onHyphenLine {
 			e.writeKey(field.Key)
@@ -192,10 +212,10 @@ func (e *encoder) encodeRootArray(arr []any) {
 		e.buf.WriteString("[]")
 		return
 	}
-	e.encodeArray("", arr, 0, false, e.opts.Delimiter, false)
+	e.encodeArray("", arr, 0, false, e.opts.Delimiter, false, "", true)
 }
 
-func (e *encoder) encodeArray(key string, arr []any, depth int, onHyphenLine bool, docDelim Delimiter, hasKey bool) {
+func (e *encoder) encodeArray(key string, arr []any, depth int, onHyphenLine bool, docDelim Delimiter, hasKey bool, pathPrefix string, allowFold bool) {
 	if len(arr) == 0 {
 		if !onHyphenLine {
 			e.writeIndent(depth)
@@ -264,7 +284,7 @@ func (e *encoder) encodeArray(key string, arr []any, depth int, onHyphenLine boo
 	e.buf.WriteByte(':')
 	e.buf.WriteByte('\n')
 	for _, item := range arr {
-		e.encodeListItem(item, depth+1, docDelim)
+		e.encodeListItem(item, depth+1, docDelim, pathPrefix, allowFold)
 	}
 }
 
@@ -286,10 +306,10 @@ func (e *encoder) writeTabularRow(obj Object, fields []string, depth int, delim 
 	e.buf.WriteByte('\n')
 }
 
-func (e *encoder) encodeListItem(item any, depth int, docDelim Delimiter) {
+func (e *encoder) encodeListItem(item any, depth int, docDelim Delimiter, pathPrefix string, allowFold bool) {
 	switch val := item.(type) {
 	case Object:
-		e.encodeObjectListItem(val, depth, docDelim)
+		e.encodeObjectListItem(val, depth, docDelim, pathPrefix, allowFold)
 	case []any:
 		if allPrimitive(val) {
 			e.writeIndent(depth)
@@ -305,7 +325,7 @@ func (e *encoder) encodeListItem(item any, depth int, docDelim Delimiter) {
 		e.buf.WriteByte(':')
 		e.buf.WriteByte('\n')
 		for _, inner := range val {
-			e.encodeListItem(inner, depth+1, docDelim)
+			e.encodeListItem(inner, depth+1, docDelim, pathPrefix, allowFold)
 		}
 	default:
 		e.writeIndent(depth)
@@ -315,7 +335,7 @@ func (e *encoder) encodeListItem(item any, depth int, docDelim Delimiter) {
 	}
 }
 
-func (e *encoder) encodeObjectListItem(obj Object, depth int, docDelim Delimiter) {
+func (e *encoder) encodeObjectListItem(obj Object, depth int, docDelim Delimiter, pathPrefix string, allowFold bool) {
 	if len(obj) == 0 {
 		e.writeIndent(depth)
 		e.buf.WriteString("-")
@@ -334,7 +354,7 @@ func (e *encoder) encodeObjectListItem(obj Object, depth int, docDelim Delimiter
 				e.writeTabularRow(row.(Object), fields, depth+2, docDelim)
 			}
 			for _, field := range obj[1:] {
-				e.encodeField(field, depth+1, false)
+				e.encodeField(field, depth+1, false, pathPrefix, allowFold)
 			}
 			return
 		}
@@ -342,9 +362,9 @@ func (e *encoder) encodeObjectListItem(obj Object, depth int, docDelim Delimiter
 
 	e.writeIndent(depth)
 	e.buf.WriteString("- ")
-	e.encodeField(first, depth+1, true)
+	e.encodeField(first, depth+1, true, pathPrefix, allowFold)
 	for _, field := range obj[1:] {
-		e.encodeField(field, depth+1, false)
+		e.encodeField(field, depth+1, false, pathPrefix, allowFold)
 	}
 }
 

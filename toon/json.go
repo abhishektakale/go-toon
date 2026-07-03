@@ -13,6 +13,17 @@ func ParseJSON(data []byte) (any, error) {
 	return parseValue(dec)
 }
 
+// ParseJSONFast uses encoding/json directly. Key order is not preserved.
+func ParseJSONFast(data []byte) (any, error) {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+	var raw any
+	if err := dec.Decode(&raw); err != nil {
+		return nil, err
+	}
+	return normalizeDecodedJSON(raw), nil
+}
+
 // EncodeJSON is ParseJSON + Marshal.
 func EncodeJSON(data []byte, opts ...EncodeOptions) ([]byte, error) {
 	v, err := ParseJSON(data)
@@ -20,6 +31,34 @@ func EncodeJSON(data []byte, opts ...EncodeOptions) ([]byte, error) {
 		return nil, err
 	}
 	return Marshal(v, opts...)
+}
+
+// EncodeJSONFast is the fast parse path when key order does not matter.
+func EncodeJSONFast(data []byte, opts ...EncodeOptions) ([]byte, error) {
+	v, err := ParseJSONFast(data)
+	if err != nil {
+		return nil, err
+	}
+	return Marshal(v, opts...)
+}
+
+func normalizeDecodedJSON(v any) any {
+	switch val := v.(type) {
+	case map[string]any:
+		obj := make(Object, 0, len(val))
+		for key, item := range val {
+			obj = append(obj, Field{Key: key, Value: normalizeDecodedJSON(item)})
+		}
+		return obj
+	case []any:
+		out := make([]any, len(val))
+		for i, item := range val {
+			out[i] = normalizeDecodedJSON(item)
+		}
+		return out
+	default:
+		return val
+	}
 }
 
 func parseValue(dec *json.Decoder) (any, error) {
