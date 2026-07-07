@@ -1,3 +1,3 @@
 module github.com/abhishektakale/go-toon
 
-go 1.26.4
+go 1.22
