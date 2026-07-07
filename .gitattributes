@@ -1,0 +1,2 @@
+# Go fuzz corpus files are format-sensitive; never convert their line endings.
+toon/testdata/fuzz/** -text
