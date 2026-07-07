@@ -207,13 +207,13 @@ Sample results on `Intel Core Ultra 9 285K` / Windows / Go 1.26 (`go test ./toon
 | `ParseJSONFast_Tabular100` | 102 MB/s | 70,400 | 82,345 | 1,620 |
 | `EncodeJSONFast_Tabular100` | 82 MB/s | 87,910 | 90,994 | 1,636 |
 | `Marshal_Tabular100` (encode only) | — | 15,556 | 8,654 | 16 |
-| `Decode_Small` | 78 MB/s | 630 | 872 | 17 |
-| `Decode_Tabular100` | 85 MB/s | 46,133 | 66,142 | 1,322 |
-| `Decode_Tabular1000` | 83 MB/s | 502,097 | 660,294 | 13,047 |
-| `DecodeToJSON_Tabular100` | 36 MB/s | 109,795 | 103,625 | 2,226 |
+| `Decode_Small` | 81 MB/s | 603 | 856 | 15 |
+| `Decode_Tabular100` | 126 MB/s | 31,056 | 58,076 | 714 |
+| `Decode_Tabular1000` | 128 MB/s | 325,537 | 580,029 | 7,031 |
+| `DecodeToJSON_Tabular100` | 48 MB/s | 81,765 | 95,475 | 1,618 |
 | `JSONMarshal_Tabular100` (baseline) | 164 MB/s | 43,878 | 37,109 | 904 |
 
-For uniform tabular data (100 users), TOON output is ~**46% smaller** than compact JSON (3,907 vs 7,187 bytes) — the main win for LLM prompts. Encode-only (`Marshal` after parse) reuses the parsed tree and allocates far less per operation than the full `EncodeJSON` pipeline. When key order does not matter, `EncodeJSONFast` is roughly **2× faster** than ordered `EncodeJSON` on tabular data. Decoding tabular TOON runs at ~**85 MB/s** (`Decode`); `DecodeToJSON` adds the `encoding/json` marshal cost on top. Recent encoder optimizations (zero-alloc tabular rows, byte-scan quoting, indent cache) cut `Marshal` allocations from 115 to **16** per encode on tabular data.
+For uniform tabular data (100 users), TOON output is ~**46% smaller** than compact JSON (3,907 vs 7,187 bytes) — the main win for LLM prompts. Encode-only (`Marshal` after parse) reuses the parsed tree and allocates far less per operation than the full `EncodeJSON` pipeline. When key order does not matter, `EncodeJSONFast` is roughly **2× faster** than ordered `EncodeJSON` on tabular data. Decoding tabular TOON runs at ~**126 MB/s** (`Decode`); `DecodeToJSON` adds the `encoding/json` marshal cost on top. Recent encoder optimizations (zero-alloc tabular rows, byte-scan quoting, indent cache) cut `Marshal` allocations from 115 to **16** per encode on tabular data.
 
 Numbers vary by CPU and Go version; use the command above on your machine for local measurements.
 

@@ -80,36 +80,36 @@ func isHex4(s string) bool {
 }
 
 // SplitInlineValues tokenizes a delimiter-separated list, respecting quoted segments.
+// Each token is sliced directly out of segment rather than rebuilt rune by rune;
+// quotes and escapes are preserved in place and unescaped later by
+// decodePrimitiveToken/UnquoteString.
 func SplitInlineValues(segment string, delimiter rune) ([]string, error) {
 	if strings.TrimSpace(segment) == "" {
 		return nil, nil
 	}
 	var tokens []string
-	var current strings.Builder
 	inQuotes := false
 	escaped := false
+	start := 0
 
-	for _, r := range segment {
-		switch {
-		case escaped:
-			current.WriteRune(r)
+	for i, r := range segment {
+		if escaped {
 			escaped = false
+			continue
+		}
+		switch {
 		case r == '\\' && inQuotes:
-			current.WriteRune(r)
 			escaped = true
 		case r == '"':
-			current.WriteRune(r)
 			inQuotes = !inQuotes
 		case r == delimiter && !inQuotes:
-			tokens = append(tokens, strings.TrimSpace(current.String()))
-			current.Reset()
-		default:
-			current.WriteRune(r)
+			tokens = append(tokens, strings.TrimSpace(segment[start:i]))
+			start = i + utf8.RuneLen(r)
 		}
 	}
 	if inQuotes {
 		return nil, errors.New("unterminated string in delimited values")
 	}
-	tokens = append(tokens, strings.TrimSpace(current.String()))
+	tokens = append(tokens, strings.TrimSpace(segment[start:]))
 	return tokens, nil
 }
