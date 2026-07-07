@@ -171,6 +171,9 @@ func (e *encoder) encodeObject(obj Object, depth int, pathPrefix string, allowFo
 
 func (e *encoder) encodeField(field Field, depth int, onHyphenLine bool, pathPrefix string, allowFold bool) {
 	childPrefix := joinPath(pathPrefix, field.Key)
+	if m, ok := field.Value.(map[string]any); ok {
+		field.Value = mapToObject(m)
+	}
 	switch val := field.Value.(type) {
 	case Object:
 		if onHyphenLine {
@@ -269,7 +272,8 @@ func (e *encoder) encodeArray(key string, arr []any, depth int, onHyphenLine boo
 		e.writeArrayHeader(key, len(arr), fields, docDelim, hasKey)
 		e.buf.WriteByte('\n')
 		for _, item := range arr {
-			e.writeTabularRow(item.(Object), fields, depth+1, docDelim)
+			obj, _ := asObject(item)
+			e.writeTabularRow(obj, fields, depth+1, docDelim)
 		}
 		return
 	}
@@ -307,6 +311,9 @@ func (e *encoder) writeTabularRow(obj Object, fields []string, depth int, delim 
 }
 
 func (e *encoder) encodeListItem(item any, depth int, docDelim Delimiter, pathPrefix string, allowFold bool) {
+	if m, ok := item.(map[string]any); ok {
+		item = mapToObject(m)
+	}
 	switch val := item.(type) {
 	case Object:
 		e.encodeObjectListItem(val, depth, docDelim, pathPrefix, allowFold)
@@ -351,7 +358,8 @@ func (e *encoder) encodeObjectListItem(obj Object, depth int, docDelim Delimiter
 			e.writeArrayHeader(first.Key, len(arr), fields, docDelim, true)
 			e.buf.WriteByte('\n')
 			for _, row := range arr {
-				e.writeTabularRow(row.(Object), fields, depth+2, docDelim)
+				obj, _ := asObject(row)
+				e.writeTabularRow(obj, fields, depth+2, docDelim)
 			}
 			for _, field := range obj[1:] {
 				e.encodeField(field, depth+1, false, pathPrefix, allowFold)
@@ -396,6 +404,29 @@ func isPrimitive(v any) bool {
 	}
 }
 
+// mapToObject converts the unordered map form produced by Decode into the
+// ordered Object the encoder works with. Key order is unspecified.
+func mapToObject(m map[string]any) Object {
+	obj := make(Object, 0, len(m))
+	for k, v := range m {
+		obj = append(obj, Field{Key: k, Value: v})
+	}
+	return obj
+}
+
+// asObject accepts either object representation the encoder may receive: the
+// ordered Object from ParseJSON/reflect, or the map[string]any from Decode.
+func asObject(v any) (Object, bool) {
+	switch val := v.(type) {
+	case Object:
+		return val, true
+	case map[string]any:
+		return mapToObject(val), true
+	default:
+		return nil, false
+	}
+}
+
 func tabularFields(arr []any) ([]string, bool) {
 	if len(arr) == 0 {
 		return nil, false
@@ -405,7 +436,7 @@ func tabularFields(arr []any) ([]string, bool) {
 	keySet := map[string]struct{}{}
 
 	for i, item := range arr {
-		obj, ok := item.(Object)
+		obj, ok := asObject(item)
 		if !ok || len(obj) == 0 {
 			return nil, false
 		}
