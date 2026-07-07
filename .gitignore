@@ -12,6 +12,14 @@ profiles/
 # local reference (not part of the library)
 /_snapshot/
 
+# profiling leftovers
+cpu_*
+mem_*
+profiles/
+
+# optional local cross-lib bench harness (not part of the repo)
+/benchmarks/
+
 # ide
 .idea/
 .vscode/
