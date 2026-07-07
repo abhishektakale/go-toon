@@ -27,10 +27,10 @@ func formatNumber(v any) string {
 }
 
 func formatJSONNumber(n json.Number) string {
+	// A successful Int64 parse means the token is an integer literal, so format
+	// it directly and only parse as a float for everything else.
 	if i, err := n.Int64(); err == nil {
-		if f, err := n.Float64(); err == nil && float64(i) == f {
-			return strconv.FormatInt(i, 10)
-		}
+		return strconv.FormatInt(i, 10)
 	}
 	f, err := n.Float64()
 	if err != nil {

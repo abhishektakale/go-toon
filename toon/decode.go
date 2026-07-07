@@ -824,7 +824,7 @@ func decodePrimitiveToken(token string) (any, error) {
 			return nil, err
 		}
 		if num == 0 {
-			num = 0
+			num = 0 // normalize -0 (ParseFloat yields -0.0) to +0.0
 		}
 		return num, nil
 	}
